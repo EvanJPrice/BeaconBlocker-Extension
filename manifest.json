@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Intelligent Blocker (v1.0 - Content Script)",
+  "version": "1.0",
+  "description": "Intelligently blocks sites using page content.",
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "permissions": [
+    "tabs",      
+    "storage",   
+    "scripting" 
+  ],
+
+  "host_permissions": [
+    "<all_urls>", 
+    "https://*.onrender.com/*" 
+  ],
+
+  "options_page": "options.html",
+  "action": {
+    "default_popup": "options.html",
+    "default_title": "AI Blocker Settings"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"], 
+      "js": ["content-script.js"],
+      "run_at": "document_idle", 
+      "all_frames": false 
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+// content-script.js
+console.log("CONTENT SCRIPT INJECTED into:", window.location.href); 
+
+function getPageData() {
+  console.log("getPageData function called.");
+
+  let title = document.title || '';
+  console.log("Raw document.title:", title); 
+
+  let descriptionMeta = document.querySelector('meta[name="description"]');
+  let descriptionOG = document.querySelector('meta[property="og:description"]');
+  let description = descriptionMeta?.content || descriptionOG?.content || '';
+  console.log("Description Meta:", descriptionMeta?.content || '(not found)'); 
+  console.log("Description OG:", descriptionOG?.content || '(not found)');
+
+  let h1Element = document.querySelector('h1');
+  let h1 = h1Element?.textContent || '';
+  console.log("H1 textContent:", h1 || '(not found)'); 
+
+  // Clean them up
+  title = title.trim();
+  description = description.trim();
+  h1 = h1.trim();
+
+  console.log("Cleaned title:", title || '(empty)'); 
+  console.log("Cleaned description:", description || '(empty)');
+  console.log("Cleaned h1:", h1 || '(empty)');
+
+  // Only send if we have meaningful data or a valid http(s) URL
+  if ((!title && !description && !h1) || !window.location.href.startsWith('http')) {
+      console.log("getPageData: Not enough useful data or not HTTP(S) URL.");
+      return null;
+  }
+
+  return { 
+    title, 
+    description,
+    h1, 
+    url: window.location.href 
+  };
+}
+
+// Send the data back to the background script after a short delay
+setTimeout(() => {
+    try {
+        const pageData = getPageData();
+        if (pageData) {
+            console.log("Content Script: Sending page data", pageData);
+            chrome.runtime.sendMessage({ type: 'PAGE_DATA_RECEIVED', data: pageData });
+        } else {
+            console.log("Content Script: No useful data to send after delay.");
+        }
+    } catch (error) {
+        // Catch errors if the background script isn't ready or disconnected
+        if (error.message.includes("Extension context invalidated")) {
+             console.warn("Content Script: Extension context invalidated, likely due to reload/update.");
+        } else {
+            console.error("Content Script: Error sending message:", error);
+        }
+    }
+}, 500); // 500ms delay
+
+console.log("CONTENT SCRIPT: Initial execution finished, message sending scheduled.");
