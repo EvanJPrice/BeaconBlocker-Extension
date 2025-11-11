@@ -1,6 +1,6 @@
 // This function runs when the "Save" button is clicked
 function saveOptions() {
-  const apiKey = document.getElementById('apiKey').value;
+  const apiKey = document.getElementById('apiKey').value.trim(); // Add .trim()
   
   // Save the API key to the extension's local storage
   chrome.storage.sync.set({

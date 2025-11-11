@@ -80,11 +80,12 @@ chrome.alarms.get(HEARTBEAT_ALARM_NAME, (alarm) => {
     }
 });
 
-// --- CRITICAL CHANGE: Send a heartbeat every time the service worker starts
-// This handles reloads from inactivity, updates, and initial loads.
-console.log("Service worker started, sending heartbeat.");
-sendHeartbeat();
-// --- End Heartbeat Setup ---
+// --- UPDATED CHECK ---
+        // This now correctly catches null, undefined, and empty/whitespace strings
+        if (!userApiKey || userApiKey.trim() === '') { 
+            console.log('No API key set in storage. Stopping block check.');
+            return true; // Stop processing
+        }
 
 
 // --- Listen for messages from Content Script ---
