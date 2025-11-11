@@ -5,28 +5,6 @@ const blockedPageUrl = chrome.runtime.getURL('blocked.html');
 // --- Use YOUR Backend Render URL ---
 const backendUrlBase = 'https://ai-backend.onrender.com'; // <-- ENSURE THIS IS YOUR URL
 
-let userApiKey = null;
-
-// --- API Key Loading ---
-async function loadApiKey() {
-    try {
-        const items = await chrome.storage.sync.get('userApiKey');
-        userApiKey = items.userApiKey;
-        console.log("API Key loaded:", userApiKey ? "Yes" : "No");
-    } catch (error) {
-        console.error("Error loading API key:", error);
-    }
-}
-
-// Listen for changes in storage (e.g., when user saves in options)
-chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'sync' && changes.userApiKey) {
-        userApiKey = changes.userApiKey.newValue;
-        console.log("API Key updated:", userApiKey ? "Yes" : "No");
-        // Re-run heartbeat setup now that we have a key
-        setupHeartbeat();
-    }
-});
 
 // --- Heartbeat Setup ---
 const HEARTBEAT_ALARM_NAME = 'heartbeat';
@@ -103,14 +81,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         console.log("Background: Received PAGE_DATA for:", targetUrl);
 
-        // --- ENTIRELY NEW ASYC BLOCK ---
         // This IIFE (Immediately Invoked Function Expression)
         // allows us to use async/await inside the listener.
         (async () => {
             // 1. Get the key from storage directly, ensuring we have it.
             const { userApiKey } = await chrome.storage.sync.get('userApiKey');
 
-            // 2. Perform the robust check on the key we just fetched.
+            // 2. Perform the robust check.
             if (!userApiKey || userApiKey.trim() === '') {
                 console.log('No API key set in storage. Stopping block check.');
                 return; // Stop processing
@@ -165,7 +142,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   });
             }
         })(); // End of async IIFE
-        // --- END OF NEW BLOCK ---
 
         return true; // Indicate you will respond asynchronously
     }
