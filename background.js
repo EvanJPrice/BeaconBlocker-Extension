@@ -28,16 +28,17 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     }
 });
 
-// --- Heartbeat Setup ---
-const HEARTBEAT_ALARM_NAME = 'heartbeat';
-
 // Function to send the heartbeat ping
 async function sendHeartbeat() {
     const { userApiKey } = await chrome.storage.sync.get('userApiKey');
-    if (userApiKey) {
+    
+    // This check is also important here!
+    if (userApiKey && userApiKey.trim() !== '') {
         try {
-            // backendUrlBase is already defined in your file
-            const heartbeatUrl = `${backendBaseUrl}/heartbeat?key=${userApiKey}`;
+            // --- FIX ---
+            // Use your original, correct variable name 'backendUrlBase'
+            const heartbeatUrl = `${backendUrlBase}/heartbeat?key=${userApiKey}`;
+            // --- END FIX ---
 
             await fetch(heartbeatUrl, { method: 'POST' });
             console.log("Heartbeat sent.");
@@ -88,66 +89,83 @@ chrome.alarms.get(HEARTBEAT_ALARM_NAME, (alarm) => {
         }
 
 
-// --- Listen for messages from Content Script ---
+// --- Listen for messages from Content Script (NOW ASYNC) ---
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Check message type, ensure we have tab info and URL data
     if (message.type === 'PAGE_DATA_RECEIVED' && sender.tab?.id && message.data?.url) {
         const tabId = sender.tab.id;
         const pageData = message.data;
-        const targetUrl = pageData.url; 
+        const targetUrl = pageData.url; // URL is now part of pageData
 
         console.log("Background: Received PAGE_DATA for:", targetUrl);
 
-        if (!userApiKey) {
-            console.log('No API key set in storage. Stopping block check.');
-            return true; // Stop here, don't block
-        }
+        // --- ENTIRELY NEW ASYNC BLOCK ---
+        // This IIFE (Immediately Invoked Function Expression)
+        // allows us to use async/await inside the listener.
+        (async () => {
+            // 1. Get the key from storage directly, ensuring we have it.
+            const { userApiKey } = await chrome.storage.sync.get('userApiKey');
 
-        if (targetUrl.startsWith(blockedPageUrl)) {
-            console.log("Ignoring message from blocked page.");
-            return true;
-        }
-
-        fetch(`${backendUrlBase}/check-url`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${userApiKey}`
-            },
-            body: JSON.stringify(pageData)
-        })
-        .then(response => {
-            if (!response.ok) {
-               console.error('Backend returned an error. Status:', response.status);
-               throw new Error(`Server error: ${response.status}`);
+            // 2. Perform the robust check on the key we just fetched.
+            if (!userApiKey || userApiKey.trim() === '') {
+                console.log('No API key set in storage. Stopping block check.');
+                return; // Stop processing
             }
-            return response.json();
-          })
-          .then(data => {
-            console.log('Server decision for', targetUrl, 'is', data.decision);
-            if (data.decision === 'BLOCK') {
-              chrome.tabs.get(tabId, (tab) => {
-                  if (chrome.runtime.lastError || !tab) {
-                      console.warn(`Tab ${tabId} closed before block could be applied.`);
-                  } else if (tab.url !== blockedPageUrl) {
-                      chrome.tabs.update(tabId, { url: blockedPageUrl });
-                  }
-              });
-            }
-          })
-          .catch(error => {
-            console.error('Error fetching/processing backend response:', error);
-             // Default to BLOCK on any fetch error
-             chrome.tabs.get(tabId, (tab) => {
-                 if (chrome.runtime.lastError || !tab) {
-                      console.warn(`Tab ${tabId} closed before error block could be applied.`);
-                 } else {
-                     chrome.tabs.update(tabId, { url: blockedPageUrl });
-                 }
-              });
-          });
 
-        return true; // Indicate async response
+            // 3. Prevent loop if somehow the blocked page sends data
+            if (targetUrl.startsWith(blockedPageUrl)) {
+                console.log("Ignoring message from blocked page.");
+                return;
+            }
+
+            // 4. Proceed with the fetch call
+            try {
+                const response = await fetch(`${backendUrlBase}/check-url`, { // Use base URL + path
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${userApiKey}`
+                    },
+                    body: JSON.stringify(pageData) // Send title, desc, h1, url
+                });
+
+                const contentType = response.headers.get("content-type");
+                if (!response.ok || !contentType || !contentType.includes("application/json")) {
+                   console.error('Backend did not return valid JSON. Status:', response.status);
+                   // Block on error
+                   if (tabId >= 0) { chrome.tabs.update(tabId, { url: blockedPageUrl }); }
+                   throw new Error('Invalid backend response');
+                }
+                
+                const data = await response.json();
+                console.log('Server decision for', targetUrl, 'is', data.decision);
+                if (data.decision === 'BLOCK') {
+                  // Check tab still exists before updating
+                  chrome.tabs.get(tabId, (tab) => {
+                      if (chrome.runtime.lastError) {
+                          console.warn(`Tab ${tabId} closed before block could be applied.`);
+                      } else if (tab && tab.url !== blockedPageUrl) { // Double check URL to prevent loop
+                          chrome.tabs.update(tabId, { url: blockedPageUrl });
+                      }
+                  });
+                }
+            } catch (error) {
+                console.error('Error fetching/processing backend response:', error);
+                 // Block on error
+                 chrome.tabs.get(tabId, (tab) => {
+                     if (chrome.runtime.lastError) {
+                          console.warn(`Tab ${tabId} closed before error block could be applied.`);
+                     } else if (tab) {
+                         chrome.tabs.update(tabId, { url: blockedPageUrl });
+                     }
+                  });
+            }
+        })(); // End of async IIFE
+        // --- END OF NEW BLOCK ---
+
+        return true; // Indicate you will respond asynchronously
     }
+    // Return false or undefined for messages you don't handle
     return false;
 });
 
