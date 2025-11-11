@@ -28,6 +28,9 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     }
 });
 
+// --- Heartbeat Setup ---
+const HEARTBEAT_ALARM_NAME = 'heartbeat';
+
 // Function to send the heartbeat ping
 async function sendHeartbeat() {
     const { userApiKey } = await chrome.storage.sync.get('userApiKey');
@@ -35,10 +38,8 @@ async function sendHeartbeat() {
     // This check is also important here!
     if (userApiKey && userApiKey.trim() !== '') {
         try {
-            // --- FIX ---
             // Use your original, correct variable name 'backendUrlBase'
             const heartbeatUrl = `${backendUrlBase}/heartbeat?key=${userApiKey}`;
-            // --- END FIX ---
 
             await fetch(heartbeatUrl, { method: 'POST' });
             console.log("Heartbeat sent.");
@@ -81,6 +82,9 @@ chrome.alarms.get(HEARTBEAT_ALARM_NAME, (alarm) => {
     }
 });
 
+// (The bad global sendHeartbeat() call is now GONE)
+// --- End Heartbeat Setup ---
+
 // --- UPDATED CHECK ---
         // This now correctly catches null, undefined, and empty/whitespace strings
         if (!userApiKey || userApiKey.trim() === '') { 
@@ -99,7 +103,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         console.log("Background: Received PAGE_DATA for:", targetUrl);
 
-        // --- ENTIRELY NEW ASYNC BLOCK ---
+        // --- ENTIRELY NEW ASYC BLOCK ---
         // This IIFE (Immediately Invoked Function Expression)
         // allows us to use async/await inside the listener.
         (async () => {
