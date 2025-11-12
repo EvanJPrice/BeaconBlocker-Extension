@@ -32,23 +32,30 @@ async function getPageData() {
     const hostname = window.location.hostname;
     const searchQuery = getSearchQuery(currentUrl);
 
-    if (hostname.includes("youtube.com") && currentUrl.includes("/watch")) {
-        console.log("getPageData: YouTube watch page. Using specific selector.");
+    if (hostname.includes("youtube.com")) {
+        // --- THIS IS THE NEW LOGIC ---
+        if (currentUrl.includes("/watch")) {
+            // It's a video page, scrape the details.
+            console.log("getPageData: YouTube watch page. Using specific selector.");
 
-        // Small delay remains helpful for dynamic loading
-        await new Promise(resolve => setTimeout(resolve, 250));
-        console.log("getPageData: Delay finished. Reading YT element now.");
+            console.log("getPageData: Reading YT element now.");
 
-        // --- Use the updated selector ---
-        const ytTitleElement = document.querySelector(YT_TITLE_SELECTOR);
-        title = ytTitleElement?.textContent?.trim() || document.title || ''; // Use specific element first
-        description = document.querySelector('meta[name="description"]')?.content || document.querySelector('meta[property="og:description"]')?.content || '';
-        h1 = title; // Use the found title as H1 for consistency
+            const ytTitleElement = document.querySelector(YT_TITLE_SELECTOR);
+            title = ytTitleElement?.textContent?.trim() || document.title || '';
+            description = document.querySelector('meta[name="description"]')?.content || document.querySelector('meta[property="og:description"]')?.content || '';
+            h1 = title; // Use the found title as H1 for consistency
 
-    } else { // General Fallback
+        } else {
+            // It's the YT main page, search, or subscriptions. DO NOT CHECK.
+            console.log("getPageData: YouTube browse page. Allowing by default.");
+            return null; // This is the key: we stop here and send no message.
+        }
+        // --- END NEW LOGIC ---
+
+    } else { // General Fallback for non-YouTube sites
         title = document.title || '';
         description = document.querySelector('meta[name="description"]')?.content || document.querySelector('meta[property="og:description"]')?.content || '';
-        if (!searchQuery && !hostname.includes("youtube.com")) {
+        if (!searchQuery) { // Removed the !hostname.includes("youtube.com") check
             h1 = document.querySelector('h1')?.textContent || '';
         }
     }
@@ -88,32 +95,45 @@ async function sendMessageIfNeeded() { // Made async to await getPageData
 
 // --- Smarter Mutation Observer Callback ---
 function handlePageMutation(mutationsList, observer) {
-    // console.log(`CS Observer: ${mutationsList.length} mutations detected.`); // Reduce noise
-    let significantChangeDetected = false;
+    let titleChanged = false;
 
+    // Check if the URL itself has changed
     if (window.location.href !== lastProcessedUrl && window.location.href.startsWith('http')) {
         console.log("CS Observer: URL change detected.");
-        significantChangeDetected = true;
-    } else {
-        for(const mutation of mutationsList) {
-             if (mutation.type === 'childList' || mutation.type === 'characterData') {
-                 const targetIsTitleRelated = mutation.target.matches?.(YT_TITLE_SELECTOR) ||
-                                           mutation.target.closest?.(YT_TITLE_SELECTOR) ||
-                                           // Check if *any* relevant title element exists now
-                                           (document.querySelector(YT_TITLE_SELECTOR) && document.querySelector(YT_TITLE_SELECTOR).textContent.trim() !== '');
-
-                 if (targetIsTitleRelated) {
-                    console.log("CS Observer: Title-related mutation detected.");
-                    significantChangeDetected = true;
-                    break;
-                 }
-            }
+        // If it's NOT a YouTube watch page, send immediately.
+        // If it IS a YouTube watch page, we WAIT for the title mutation.
+        if (!window.location.hostname.includes("youtube.com") || !window.location.href.includes("/watch")) {
+             significantChangeDetected = true;
         }
     }
 
-    if (significantChangeDetected) {
-        console.log("CS Observer: Significant change confirmed, triggering check.");
-        sendMessageIfNeeded(); // Call the debounced send function
+    // Check if the title element has changed
+    for(const mutation of mutationsList) {
+         if (mutation.type === 'childList' || mutation.type === 'characterData') {
+             // Check if the mutation happened on or inside the title element
+             const targetIsTitleRelated = mutation.target.matches?.(YT_TITLE_SELECTOR) ||
+                                       mutation.target.closest?.(YT_TITLE_SELECTOR);
+
+             if (targetIsTitleRelated) {
+                console.log("CS Observer: Title-related mutation detected.");
+                titleChanged = true;
+                break;
+             }
+        }
+    }
+
+    // This is the new logic:
+    // On YouTube, we ONLY send a message if the title has changed.
+    // This solves the race condition.
+    if (window.location.hostname.includes("youtube.com") && window.location.href.includes("/watch")) {
+        if (titleChanged) {
+            console.log("CS Observer: YouTube title changed, triggering check.");
+            sendMessageIfNeeded();
+        }
+    } else if (significantChangeDetected) {
+        // For all other pages, send on URL change.
+        console.log("CS Observer: Non-YT change confirmed, triggering check.");
+        sendMessageIfNeeded();
     }
 }
 

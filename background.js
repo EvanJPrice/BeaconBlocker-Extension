@@ -1,9 +1,11 @@
-// background.js
+// background.js (v_FINAL_CORRECT)
 console.log("BACKGROUND.JS SCRIPT STARTED");
 
 const blockedPageUrl = chrome.runtime.getURL('blocked.html');
 // --- Use YOUR Backend Render URL ---
-const backendUrlBase = 'https://ai-backend.onrender.com'; // <-- ENSURE THIS IS YOUR URL
+// !!! PLEASE DOUBLE-CHECK THIS URL !!!
+// Your original file had 'https://chrometest.onrender.com'
+const backendUrlBase = 'https://chrometest.onrender.com'; 
 
 
 // --- Heartbeat Setup ---
@@ -11,6 +13,7 @@ const HEARTBEAT_ALARM_NAME = 'heartbeat';
 
 // Function to send the heartbeat ping
 async function sendHeartbeat() {
+    // Get the key *inside* this async function
     const { userApiKey } = await chrome.storage.sync.get('userApiKey');
     
     // This check is also important here!
@@ -35,21 +38,21 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     }
 });
 
-// --- NEW: Send heartbeat on BROWSER startup ---
+// --- Send heartbeat on BROWSER startup ---
 chrome.runtime.onStartup.addListener(() => {
     console.log("Browser startup detected, sending heartbeat.");
-    sendHeartbeat();
+    sendHeartbeat(); // This is safe, it's inside a listener
 });
 
-// --- NEW: Send heartbeat on extension install/update ---
+// --- Send heartbeat on extension install/update ---
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === "install" || details.reason === "update") {
         console.log("Extension installed/updated, sending heartbeat.");
-        sendHeartbeat();
+        sendHeartbeat(); // This is safe, it's inside a listener
     }
 });
 
-// --- UPDATED: Create alarm (if needed) ---
+// --- Create alarm (if needed) ---
 chrome.alarms.get(HEARTBEAT_ALARM_NAME, (alarm) => {
     if (!alarm) {
         chrome.alarms.create(HEARTBEAT_ALARM_NAME, { 
@@ -59,16 +62,7 @@ chrome.alarms.get(HEARTBEAT_ALARM_NAME, (alarm) => {
         console.log("Heartbeat alarm created.");
     }
 });
-
-// (The bad global sendHeartbeat() call is now GONE)
 // --- End Heartbeat Setup ---
-
-// --- UPDATED CHECK ---
-        // This now correctly catches null, undefined, and empty/whitespace strings
-        if (!userApiKey || userApiKey.trim() === '') { 
-            console.log('No API key set in storage. Stopping block check.');
-            return true; // Stop processing
-        }
 
 
 // --- Listen for messages from Content Script (NOW ASYNC) ---
@@ -87,7 +81,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // 1. Get the key from storage directly, ensuring we have it.
             const { userApiKey } = await chrome.storage.sync.get('userApiKey');
 
-            // 2. Perform the robust check.
+            // 2. Perform the robust check. (This is where your 'if' block belongs)
             if (!userApiKey || userApiKey.trim() === '') {
                 console.log('No API key set in storage. Stopping block check.');
                 return; // Stop processing
@@ -149,11 +143,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
 });
 
-// --- !! STARTUP LOGIC !! ---
-// Load the key first, and THEN set up the heartbeat.
-// This fixes the race condition.
-loadApiKey().then(() => {
-    setupHeartbeat();
-});
-
-console.log("BACKGROUND.JS LISTENING FOR MESSAGES");
+console.log("BACKGROUND.JS SCRIPT LOADED, LISTENERS ATTACHED");
