@@ -170,4 +170,37 @@ if (DASHBOARD_URLS.some(url => window.location.href.includes(url))) {
             });
         }
     });
+
+    // --- Block Log Fetch Bridge (Privacy-First) ---
+    // Dashboard requests block logs via CustomEvent, we respond with local storage data
+    document.addEventListener('BEACON_GET_BLOCK_LOG', async () => {
+        // console.log("Content Script: Received BEACON_GET_BLOCK_LOG request.");
+        try {
+            // Request block log from background script
+            chrome.runtime.sendMessage({ type: 'GET_BLOCK_LOG' }, (response) => {
+                if (response?.success) {
+                    // console.log("Content Script: Got block log, dispatching response.", response.logs?.length || 0, "entries");
+                    // Dispatch response event with logs
+                    window.dispatchEvent(new CustomEvent('BEACON_BLOCK_LOG_RESPONSE', {
+                        detail: { logs: response.logs }
+                    }));
+                } else {
+                    window.dispatchEvent(new CustomEvent('BEACON_BLOCK_LOG_RESPONSE', {
+                        detail: { logs: [] }
+                    }));
+                }
+            });
+        } catch (e) {
+            console.error("Content Script: Error fetching block log:", e);
+            window.dispatchEvent(new CustomEvent('BEACON_BLOCK_LOG_RESPONSE', {
+                detail: { logs: [] }
+            }));
+        }
+    });
+
+    // --- Block Log Clear Bridge ---
+    document.addEventListener('BEACON_CLEAR_BLOCK_LOG', () => {
+        console.log("Content Script: Received BEACON_CLEAR_BLOCK_LOG request.");
+        safeSendMessage({ type: 'CLEAR_BLOCK_LOG' });
+    });
 }

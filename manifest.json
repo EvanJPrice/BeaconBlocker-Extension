@@ -38,5 +38,12 @@
       "run_at": "document_idle",
       "all_frames": false
     }
-  ]
+  ],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:*/*",
+      "https://*.vercel.app/*",
+      "https://*.netlify.app/*"
+    ]
+  }
 }

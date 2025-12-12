@@ -75,6 +75,55 @@ async function setCache(url, data) {
     }
 }
 
+// --- LOCAL BLOCK LOG (Privacy-First) ---
+// Stores recent blocks locally - NEVER sent to server
+const MAX_BLOCK_LOG_SIZE = 50;
+const BLOCK_LOG_KEY = 'localBlockLog';
+
+async function addToLocalBlockLog(blockData) {
+    try {
+        const result = await chrome.storage.local.get(BLOCK_LOG_KEY);
+        let blockLog = result[BLOCK_LOG_KEY] || [];
+
+        // Add new block at the beginning
+        blockLog.unshift({
+            url: blockData.url,
+            domain: blockData.domain,
+            reason: blockData.reason,
+            pageTitle: blockData.pageTitle || '',
+            timestamp: Date.now()
+        });
+
+        // Keep only last 50
+        if (blockLog.length > MAX_BLOCK_LOG_SIZE) {
+            blockLog = blockLog.slice(0, MAX_BLOCK_LOG_SIZE);
+        }
+
+        await chrome.storage.local.set({ [BLOCK_LOG_KEY]: blockLog });
+        console.log('[BLOCK LOG] Added block to local log:', blockData.domain);
+    } catch (e) {
+        console.error('Error adding to block log:', e);
+    }
+}
+
+async function getLocalBlockLog() {
+    try {
+        const result = await chrome.storage.local.get(BLOCK_LOG_KEY);
+        return result[BLOCK_LOG_KEY] || [];
+    } catch (e) {
+        console.error('Error getting block log:', e);
+        return [];
+    }
+}
+
+async function clearLocalBlockLog() {
+    try {
+        await chrome.storage.local.remove(BLOCK_LOG_KEY);
+        console.log('[BLOCK LOG] Cleared local block log');
+    } catch (e) {
+        console.error('Error clearing block log:', e);
+    }
+}
 
 // --- 2. AUTHENTICATION (JWT) ---
 let authToken = null;
@@ -163,9 +212,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         handleClearLocalCache(sendResponse);
         return true;
     }
+
+    // --- BLOCK LOG HANDLERS (for Dashboard) ---
+    if (message.type === 'GET_BLOCK_LOG') {
+        getLocalBlockLog().then(logs => {
+            sendResponse({ success: true, logs: logs });
+        });
+        return true; // Will respond asynchronously
+    }
+    if (message.type === 'CLEAR_BLOCK_LOG') {
+        clearLocalBlockLog().then(() => {
+            sendResponse({ success: true });
+        });
+        return true;
+    }
+
     return false;
 });
 
+// --- EXTERNAL MESSAGE LISTENER (for Dashboard) ---
+// Allows dashboard web page to request block logs from extension
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+    console.log('[EXTERNAL] Received message from:', sender.origin, message.type);
+
+    if (message.type === 'GET_BLOCK_LOG') {
+        getLocalBlockLog().then(logs => {
+            sendResponse({ success: true, logs: logs });
+        });
+        return true;
+    }
+    if (message.type === 'CLEAR_BLOCK_LOG') {
+        clearLocalBlockLog().then(() => {
+            sendResponse({ success: true });
+        });
+        return true;
+    }
+    if (message.type === 'PING') {
+        sendResponse({ success: true, version: '1.0' });
+        return false;
+    }
+
+    return false;
+});
 async function handlePageStateUpdate(message, sender) {
     const tabId = sender.tab.id;
     if (!tabId) return;
@@ -262,6 +350,14 @@ async function handlePageStateUpdate(message, sender) {
     if (cached && (Date.now() - cached.timestamp < expiration)) {
         console.log(`Cache Hit for ${url}: ${cached.decision}`);
         if (cached.decision === 'BLOCK') {
+            // Log cache block to local log (privacy-first)
+            const hostname = new URL(url).hostname.replace('www.', '');
+            addToLocalBlockLog({
+                url: url,
+                domain: hostname,
+                reason: 'Cached decision',
+                pageTitle: pageData.title || cached.title || ''
+            });
             blockPage(tabId, url);
         }
     } else {
@@ -343,12 +439,17 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
             const logTitle = cached.title || tab.title || "Cached Page";
             if (cached.decision === 'BLOCK') {
                 console.log(`INSTA-BLOCK from cache for ${tab.url}`);
-                sendLogEvent({ title: logTitle, reason: "Previously blocked by AI", decision: "BLOCK_CACHE", url: tab.url });
+                // Log cache block to local log (privacy-first)
+                const hostname = new URL(tab.url).hostname.replace('www.', '');
+                addToLocalBlockLog({
+                    url: tab.url,
+                    domain: hostname,
+                    reason: 'Cached decision',
+                    pageTitle: logTitle
+                });
                 blockPage(tabId, tab.url);
             } else if (cached.decision === 'ALLOW') {
                 console.log(`Cache Hit (ALLOW) for ${tab.url}`);
-                // Log it so it appears in the dashboard history
-                // sendLogEvent({ title: logTitle, reason: "Previously allowed by AI", decision: "ALLOW_CACHE", url: tab.url });
             }
         }
         tabState[tabId] = { lastProcessedUrl: null, lastProcessedTitle: null, hasBeenChecked: false };
@@ -447,6 +548,15 @@ async function handlePageCheck(pageData, tabId) {
     try {
         const data = await requestPromise;
         if (data?.decision === 'BLOCK') {
+            // Log block locally (privacy-first - never sent to server)
+            const hostname = new URL(targetUrl).hostname.replace('www.', '');
+            addToLocalBlockLog({
+                url: targetUrl,
+                domain: hostname,
+                reason: data.reason || 'Blocked by Beacon',
+                pageTitle: pageData.title || ''
+            });
+
             blockPage(tabId, targetUrl);
         }
     } finally {

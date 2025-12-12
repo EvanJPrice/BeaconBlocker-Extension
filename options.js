@@ -134,6 +134,21 @@ document.getElementById('report-bug-link').addEventListener('click', (e) => {
     });
 });
 
+document.getElementById('feature-idea-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    const dashboardUrl = 'http://localhost:5173';
+    const featureUrl = 'http://localhost:5173?reportBug=true'; // Uses same form for now
+
+    chrome.tabs.query({ url: `${dashboardUrl}/*` }, (tabs) => {
+        if (tabs.length > 0) {
+            chrome.tabs.update(tabs[0].id, { url: featureUrl, active: true });
+            chrome.windows.update(tabs[0].windowId, { focused: true });
+        } else {
+            chrome.tabs.create({ url: featureUrl });
+        }
+    });
+});
+
 // Initialize
 document.addEventListener('DOMContentLoaded', updateUI);
 
