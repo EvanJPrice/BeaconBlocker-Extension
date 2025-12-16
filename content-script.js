@@ -99,7 +99,7 @@ if (titleElement) {
 
 // --- Dashboard Integration ---
 // This allows the web dashboard to know if the extension is installed and logged in.
-const DASHBOARD_URLS = ['localhost:5173', 'chrome-test-dashboard.vercel.app'];
+const DASHBOARD_URLS = ['localhost:5173', 'localhost:5174', 'localhost:5175', 'chrome-test-dashboard.vercel.app'];
 
 if (DASHBOARD_URLS.some(url => window.location.href.includes(url))) {
     console.log("Beacon Blocker: Dashboard detected. Injecting status marker.");

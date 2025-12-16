@@ -137,7 +137,7 @@ document.getElementById('report-bug-link').addEventListener('click', (e) => {
 document.getElementById('feature-idea-link').addEventListener('click', (e) => {
     e.preventDefault();
     const dashboardUrl = 'http://localhost:5173';
-    const featureUrl = 'http://localhost:5173?reportBug=true'; // Uses same form for now
+    const featureUrl = 'http://localhost:5173?shareFeature=true';
 
     chrome.tabs.query({ url: `${dashboardUrl}/*` }, (tabs) => {
         if (tabs.length > 0) {

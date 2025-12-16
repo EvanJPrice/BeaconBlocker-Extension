@@ -20,7 +20,7 @@ const PROCESSING_COOLDOWN_MS = 3000; // 3 second cooldown between checks of same
 // --- 1. ROBUST CACHING ---
 // --- 1. ROBUST CACHING (PERSISTENT) & PRIVACY ---
 const CACHE_EXPIRATION_BLOCK_MS = 5 * 60 * 1000; // 5 minutes for BLOCKS (to allow rule updates)
-const CACHE_EXPIRATION_ALLOW_MS = 24 * 60 * 60 * 1000; // 24 hours for ALLOWS (save costs)
+const CACHE_EXPIRATION_ALLOW_MS = 5 * 60 * 1000; // 5 minutes for ALLOWS (ensures prompt changes take effect quickly)
 const MAX_CACHE_SIZE = 1000;
 
 // Local Safe List - NEVER send these to the AI
@@ -63,7 +63,8 @@ async function getCache(url) {
 
 async function setCache(url, data) {
     const key = normalizeUrl(url);
-    const entry = { ...data, timestamp: Date.now() };
+    const { cacheVersion } = await chrome.storage.local.get('cacheVersion');
+    const entry = { ...data, timestamp: Date.now(), cacheVersion: cacheVersion || null };
     try {
         // Simple set. For true LRU in storage, we'd need a separate index, 
         // but for now we'll rely on the 5-min expiration to keep it relatively clean 
@@ -77,7 +78,7 @@ async function setCache(url, data) {
 
 // --- LOCAL BLOCK LOG (Privacy-First) ---
 // Stores recent blocks locally - NEVER sent to server
-const MAX_BLOCK_LOG_SIZE = 50;
+const MAX_BLOCK_LOG_SIZE = 200;
 const BLOCK_LOG_KEY = 'localBlockLog';
 
 async function addToLocalBlockLog(blockData) {
@@ -91,6 +92,7 @@ async function addToLocalBlockLog(blockData) {
             domain: blockData.domain,
             reason: blockData.reason,
             pageTitle: blockData.pageTitle || '',
+            activePrompt: blockData.activePrompt || null,
             timestamp: Date.now()
         });
 
@@ -340,6 +342,7 @@ async function handlePageStateUpdate(message, sender) {
     };
 
     const cached = await getCache(url);
+    const { cacheVersion: currentVersion } = await chrome.storage.local.get('cacheVersion');
 
     // Determine expiration based on decision
     let expiration = CACHE_EXPIRATION_BLOCK_MS;
@@ -347,7 +350,12 @@ async function handlePageStateUpdate(message, sender) {
         expiration = CACHE_EXPIRATION_ALLOW_MS;
     }
 
-    if (cached && (Date.now() - cached.timestamp < expiration)) {
+    // Check cache validity: must be recent AND match current cacheVersion
+    const cacheValid = cached &&
+        (Date.now() - cached.timestamp < expiration) &&
+        (!currentVersion || cached.cacheVersion === currentVersion);
+
+    if (cacheValid) {
         console.log(`Cache Hit for ${url}: ${cached.decision}`);
         if (cached.decision === 'BLOCK') {
             // Log cache block to local log (privacy-first)
@@ -361,6 +369,9 @@ async function handlePageStateUpdate(message, sender) {
             blockPage(tabId, url);
         }
     } else {
+        if (cached && !cacheValid) {
+            console.log(`Cache invalidated for ${url} - rules changed (cache: ${cached.cacheVersion}, current: ${currentVersion})`);
+        }
         handlePageCheck(pageData, tabId);
     }
     if (isShortsUrl(url)) {
@@ -372,13 +383,15 @@ async function handleClearLocalCache(sendResponse) {
     console.log("Clearing local decision cache...");
     try {
         const items = await chrome.storage.local.get(null);
-        const keysToRemove = Object.keys(items).filter(key => key !== 'authToken');
+        // Preserve authToken and block history (localBlockLog) - only clear decision cache
+        const keysToPreserve = ['authToken', 'localBlockLog', 'cacheVersion'];
+        const keysToRemove = Object.keys(items).filter(key => !keysToPreserve.includes(key));
 
         if (keysToRemove.length > 0) {
             await chrome.storage.local.remove(keysToRemove);
         }
 
-        console.log("Local decision cache cleared (AuthToken preserved).");
+        console.log("Local decision cache cleared (AuthToken and Block History preserved).");
         if (typeof sendResponse === 'function') sendResponse({ success: true });
     } catch (e) {
         console.error("Error clearing cache:", e);
@@ -554,7 +567,8 @@ async function handlePageCheck(pageData, tabId) {
                 url: targetUrl,
                 domain: hostname,
                 reason: data.reason || 'Blocked by Beacon',
-                pageTitle: pageData.title || ''
+                pageTitle: pageData.title || '',
+                activePrompt: data.activePrompt || null
             });
 
             blockPage(tabId, targetUrl);
