@@ -163,6 +163,19 @@ async function clearLocalBlockLog() {
     }
 }
 
+async function deleteSingleLog(timestamp) {
+    try {
+        const result = await chrome.storage.local.get(BLOCK_LOG_KEY);
+        let blockLog = result[BLOCK_LOG_KEY] || [];
+        blockLog = blockLog.filter(log => log.timestamp !== timestamp);
+        await chrome.storage.local.set({ [BLOCK_LOG_KEY]: blockLog });
+        notifyDashboard('BEACON_BLOCK_LOG_UPDATED');
+    } catch (e) {
+        console.error('Error deleting single log:', e);
+    }
+}
+
+
 // --- DASHBOARD NOTIFICATION HELPER ---
 // Sends a custom event to all open Dashboard tabs via the content script bridge
 async function notifyDashboard(eventType, detail = {}) {
@@ -280,6 +293,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         return true;
     }
+    if (message.type === 'DELETE_SINGLE_LOG') {
+        deleteSingleLog(message.timestamp).then(() => {
+            sendResponse({ success: true });
+        });
+        return true;
+    }
 
     return false;
 });
@@ -296,6 +315,12 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
     }
     if (message.type === 'CLEAR_BLOCK_LOG') {
         clearLocalBlockLog().then(() => {
+            sendResponse({ success: true });
+        });
+        return true;
+    }
+    if (message.type === 'DELETE_SINGLE_LOG') {
+        deleteSingleLog(message.timestamp).then(() => {
             sendResponse({ success: true });
         });
         return true;

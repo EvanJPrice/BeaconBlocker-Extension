@@ -206,4 +206,10 @@ if (DASHBOARD_URLS.some(url => window.location.href.includes(url))) {
     document.addEventListener('BEACON_CLEAR_BLOCK_LOG', () => {
         safeSendMessage({ type: 'CLEAR_BLOCK_LOG' });
     });
+
+    // --- Single Log Delete Bridge ---
+    document.addEventListener('BEACON_DELETE_SINGLE_LOG', (event) => {
+        const { timestamp } = event.detail;
+        safeSendMessage({ type: 'DELETE_SINGLE_LOG', timestamp });
+    });
 }
