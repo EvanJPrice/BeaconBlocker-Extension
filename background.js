@@ -725,7 +725,7 @@ async function handlePageCheck(pageData, tabId) {
             if (response.status === 401 || response.status === 403) {
                 await chrome.storage.local.remove('authToken');
                 authToken = null;
-                openLogin();
+                // Don't auto-open login tab - just silently clear the token
                 return null;
             }
 

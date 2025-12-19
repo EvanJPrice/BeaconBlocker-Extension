@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "description": "AI-powered content blocker that helps you stay focused by blocking distracting websites based on your personal goals.",
   "icons": {
-    "48": "logo.jpg",
-    "128": "logo.jpg"
+    "48": "logo.png",
+    "128": "logo.png"
   },
   "background": {
     "service_worker": "background.js"
