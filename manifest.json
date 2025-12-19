@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Beacon Blocker",
-  "version": "1.0",
+  "version": "1.0.0",
   "description": "AI-powered content blocker that helps you stay focused by blocking distracting websites based on your personal goals.",
   "icons": {
     "48": "logo.jpg",
@@ -12,15 +12,12 @@
   },
   "permissions": [
     "tabs",
-    "storage",
-    "scripting",
-    "alarms",
-    "identity"
+    "storage"
   ],
   "host_permissions": [
     "<all_urls>",
     "https://*.onrender.com/*",
-    "http://localhost:3000/*"
+    "https://api.beaconblocker.com/*"
   ],
   "options_page": "options.html",
   "action": {
@@ -43,7 +40,8 @@
   "externally_connectable": {
     "matches": [
       "https://*.vercel.app/*",
-      "https://*.netlify.app/*"
+      "https://*.netlify.app/*",
+      "https://dashboard.beaconblocker.com/*"
     ]
   }
 }

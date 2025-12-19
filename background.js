@@ -202,7 +202,7 @@ async function loadAuthToken() {
 function openLogin() {
     // Deprecated: login.html
     // Redirect to Dashboard instead
-    chrome.tabs.create({ url: 'https://beaconblocker.vercel.app' });
+    chrome.tabs.create({ url: BEACON_CONFIG.DASHBOARD_URL });
 }
 
 chrome.storage.onChanged.addListener((changes, namespace) => {
