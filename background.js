@@ -105,6 +105,7 @@ const MAX_BLOCK_LOG_SIZE = 5000; // ~2.5MB - makes full use of available storage
 const BLOCK_LOG_KEY = 'localBlockLog';
 
 async function addToLocalBlockLog(blockData) {
+    console.log('[BLOCK LOG] Adding entry:', blockData.url, blockData.reason);
     try {
         const result = await chrome.storage.local.get(BLOCK_LOG_KEY);
         let blockLog = result[BLOCK_LOG_KEY] || [];
@@ -490,14 +491,6 @@ async function handleClearLocalCache(sendResponse) {
             await chrome.storage.local.set(recoveryPayload);
         }
 
-        // 5. Add System Reset Log
-        await addToLocalBlockLog({
-            url: 'https://beacon.internal/system-reset',
-            domain: 'Beacon Control',
-            reason: 'User Reset the Decision Cache',
-            pageTitle: 'Cache Reset'
-        });
-
         // Notify dashboard to refresh if open
         await notifyDashboard('BEACON_BLOCK_LOG_UPDATED');
 
@@ -742,7 +735,20 @@ async function handlePageCheck(pageData, tabId) {
                 }
             }
 
-            await setCache(targetUrl, { decision: data.decision, title: pageData.title, reason: data.reason });
+            // Skip caching for time-sensitive decisions (they contain time remaining info)
+            // This ensures the AI is re-consulted when the timer may have expired
+            const isTimeSensitive = data.reason && (
+                /\d+\s*(min|sec|hour)/i.test(data.reason) ||
+                data.reason.toLowerCase().includes('left)') ||
+                data.reason.toLowerCase().includes('timer') ||
+                data.reason.toLowerCase().includes('expired')
+            );
+
+            if (!isTimeSensitive) {
+                await setCache(targetUrl, { decision: data.decision, title: pageData.title, reason: data.reason });
+            } else {
+                console.log('[CACHE] Skipping cache for time-sensitive decision:', data.reason);
+            }
             return data;
         } catch (error) {
             console.error('Error in handlePageCheck:', error);
